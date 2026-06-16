@@ -7,7 +7,7 @@ const express = require('express');
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
 const ADMIN_CHAT_ID = '7485181331'; 
 const CHECK_INTERVAL = 15000; // Har 15 Seconds me Stock Check hoga
-const RENDER_URL = 'https://instamart-stock-bot.onrender.com/'; // ⚠️ Note: Render par deploy ke baad jo link mile, wo yahan badal dena bhai!
+const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; // 🔥 Aapka Naya Live URL Lock Ho Gaya!
 
 // 📍 LOCKED HYPERLOCAL LOCATION COORDINATES
 const FIXED_LAT = '28.708';  
@@ -176,7 +176,7 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
             headers: { 
                 'User-Agent': randomAgent, 
                 'Accept-Language': 'en-US,en;q=0.9',
-                // 🔥 SPREADING COOKIES FOR HYPERLOCAL LOCATION
+                // Spreading cookies for hyperlocal location injection
                 'Cookie': `_lat=${lat}; _lng=${lng}; locationAddress=Locked_Area;`
             }, 
             timeout: 10000 
