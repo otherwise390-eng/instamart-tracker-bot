@@ -5,12 +5,12 @@ const express = require('express');
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
 const ADMIN_CHAT_ID = '7485181331'; 
-const CHECK_INTERVAL = 15000; 
+const CHECK_INTERVAL = 15000; // Har 15 second me fresh check hoga
 const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
-// 📍 FIXED LOCATION: SONU SAGAR DAIRY LOCKED INTERNAL COORDINATES
-const FIXED_LAT = '28.708143';  
-const FIXED_LNG = '77.305382';  
+// 📍 DEFAULT FALLBACK LOCATION (SONU SAGAR DAIRY)
+const DEFAULT_LAT = '28.708143';  
+const DEFAULT_LNG = '77.305382';  
 // ---------------------
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -22,10 +22,10 @@ if (!global.instamartApprovedList) {
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Mobile Engine Online!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Location Engine Online!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Port Binding Successful on ${PORT}`));
 
-// 🔥 NON-STOP JHATKA SYSTEM (SERVER ALIVE LOOP)
+// 🔥 SERVER ALIVE JHATKA SYSTEM
 setInterval(() => {
     axios.get(RENDER_URL).catch(() => {}); 
 }, 30000); 
@@ -54,7 +54,7 @@ bot.on('callback_query', async (ctx) => {
 bot.start((ctx) => {
     const userId = ctx.from.id.toString();
     if (isUserApproved(userId)) {
-        return ctx.reply("🤖 Instamart Ultra API Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/stop_all`");
+        return ctx.reply("🤖 Instamart Location-Wise Engine Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/stop_all`");
     }
     ctx.reply(`🔒 **Access Denied!** ID: \`${userId}\``);
 });
@@ -69,9 +69,30 @@ bot.command('start_track', async (ctx) => {
     let instamartLink = args.find(arg => arg.includes('swiggy.com/'));
     if (!instamartLink) return ctx.reply("❌ Valid Swiggy Instamart link bhejo!");
     
+    // 🔥 1. DYNAMIC LOCATION EXTRACTOR ENGINE
+    let trackLat = DEFAULT_LAT;
+    let trackLng = DEFAULT_LNG;
+    let locationType = "Default (Sonu Sagar Dairy)";
+
+    try {
+        const urlObj = new URL(instamartLink);
+        const latParam = urlObj.searchParams.get('lat');
+        const lngParam = urlObj.searchParams.get('lng');
+        
+        if (latParam && lngParam) {
+            trackLat = latParam;
+            trackLng = lngParam;
+            locationType = `Link Specific (${trackLat}, ${trackLng})`;
+        }
+    } catch (err) {
+        // Fallback standard URL context parsing if explicit parsing throws
+    }
+    
+    // 🔥 2. PRODUCT ITEM ID EXTRACTOR
     let itemId = "";
     try {
-        const parts = instamartLink.split('?')[0].split('/');
+        const urlWithoutParams = instamartLink.split('?')[0];
+        const parts = urlWithoutParams.split('/');
         itemId = parts[parts.length - 1];
     } catch (e) { itemId = ""; }
 
@@ -80,11 +101,15 @@ bot.command('start_track', async (ctx) => {
     if (!activeUsers[chatId]) activeUsers[chatId] = [];
     if (activeUsers[chatId].some(item => item.id === itemId)) return ctx.reply("⚠️ Pehle se track ho raha hai!");
     
-    const intervalId = setInterval(() => { checkInstamartMobileAPI(ctx, chatId, itemId, instamartLink); }, CHECK_INTERVAL);
+    // Set dynamic engine tracker loop
+    const intervalId = setInterval(() => { 
+        checkInstamartDynamicAPI(ctx, chatId, itemId, instamartLink, trackLat, trackLng, locationType); 
+    }, CHECK_INTERVAL);
+    
     activeUsers[chatId].push({ id: itemId, url: instamartLink, interval: intervalId });
     
-    ctx.reply(`🚀 **Mobile API Tracking Active!**\n🆔 ID: \`${itemId}\`\n📍 Location Fixed: *Sonu Sagar Dairy*\nScanning database...`);
-    checkInstamartMobileAPI(ctx, chatId, itemId, instamartLink);
+    ctx.reply(`🚀 **Dynamic Location Tracking Active!**\n🆔 Product ID: \`${itemId}\`\n📍 Target Area: *${locationType}*\nScanning database for this specific region...`);
+    checkInstamartDynamicAPI(ctx, chatId, itemId, instamartLink, trackLat, trackLng, locationType);
 });
 
 bot.command('stop_all', (ctx) => {
@@ -96,12 +121,13 @@ bot.command('stop_all', (ctx) => {
     } else { ctx.reply("⚠️ Koyi active tracking nahi mili."); }
 });
 
-async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
+async function checkInstamartDynamicAPI(ctx, chatId, itemId, originalUrl, lat, lng, locationLabel) {
     if (!activeUsers[chatId]) return;
     const itemIndex = activeUsers[chatId].findIndex(item => item.id === itemId);
     if (itemIndex === -1) return;
 
-    const apiTargetUrl = `https://www.swiggy.com/api/instamart/item/${itemId}?lat=${FIXED_LAT}&lng=${FIXED_LNG}`;
+    // Direct targeted database hit with extracted custom location params
+    const apiTargetUrl = `https://www.swiggy.com/api/instamart/item/${itemId}?lat=${lat}&lng=${lng}`;
 
     try {
         const response = await axios.get(apiTargetUrl, {
@@ -117,6 +143,7 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
         if (response.data && response.data.data) {
             const itemData = response.data.data;
             
+            // Price Filter Engine
             let price = "N/A";
             if (itemData.price) {
                 price = `₹${itemData.price / 100 || itemData.price}`;
@@ -125,6 +152,7 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
                 price = `₹${rawPrice > 500 ? rawPrice / 100 : rawPrice}`;
             }
 
+            // Real Inventory Status Validator
             let isItemAvailable = false;
 
             if (itemData.inventory !== undefined && itemData.inventory > 0) {
@@ -135,19 +163,21 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
                 isItemAvailable = true;
             }
 
+            // Hard Out-of-Stock Override Check
             if (itemData.out_of_stock === true || itemData.is_out_of_stock === true || itemData.stock_status === 'OUT_OF_STOCK') {
                 isItemAvailable = false;
             }
 
+            // TRIGGER EXACT REGIONAL NOTIFICATION
             if (isItemAvailable) {
-                await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale location par item LIVE wapas aa gaya hai! 🔥\n\n💰 **Price:** ${price}\n\nLink:\n${originalUrl}`,
+                await bot.telegram.sendMessage(chatId, `🚨 INSTAMART LOCAL STOCK ALERT 🚨\n\n🔥 bhai aapke targeted area par item LIVE mil gaya hai! 🔥\n\n📍 **Location:** ${locationLabel}\n💰 **Price:** ${price}\n\nLink:\n${originalUrl}`,
                     Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
                 ).catch(() => {});
             }
         }
     } catch (e) {
-        // Silent catch
+        // Protection from temporary endpoint network drops
     }
 }
 
-bot.launch().then(() => console.log("Instamart Mobile-API Engine Live..."));
+bot.launch().then(() => console.log("Instamart Dynamic Location Engine Online..."));
