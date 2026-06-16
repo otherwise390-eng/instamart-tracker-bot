@@ -5,7 +5,7 @@ const express = require('express');
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
 const ADMIN_CHAT_ID = '7485181331'; 
-const CHECK_INTERVAL = 15000; // Har 15 second me database hit hoga
+const CHECK_INTERVAL = 15000; 
 const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
 // 📍 FIXED LOCATION: SONU SAGAR DAIRY LOCKED INTERNAL COORDINATES
@@ -69,7 +69,6 @@ bot.command('start_track', async (ctx) => {
     let instamartLink = args.find(arg => arg.includes('swiggy.com/'));
     if (!instamartLink) return ctx.reply("❌ Valid Swiggy Instamart link bhejo!");
     
-    // Auto Item ID Extract
     let itemId = "";
     try {
         const parts = instamartLink.split('?')[0].split('/');
@@ -107,10 +106,9 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
     try {
         const response = await axios.get(apiTargetUrl, {
             headers: {
-                // 🔥 OFFICIAL ANDROID DEVICE SIMULATION HEADERS (Anti-Block)
                 'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36 SwiggyAndroidApp',
                 'Accept': 'application/json, text/plain, */*',
-                'X-Requested-With': 'in.swiggy.android', // Simulates official Swiggy Android app request
+                'X-Requested-With': 'in.swiggy.android',
                 'Content-Type': 'application/json'
             },
             timeout: 7000
@@ -119,7 +117,6 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
         if (response.data && response.data.data) {
             const itemData = response.data.data;
             
-            // 1. Price Resolver
             let price = "N/A";
             if (itemData.price) {
                 price = `₹${itemData.price / 100 || itemData.price}`;
@@ -128,7 +125,6 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
                 price = `₹${rawPrice > 500 ? rawPrice / 100 : rawPrice}`;
             }
 
-            // 2. Heavy Failsafe Stock Resolver (Isse galat alert bilkul nahi aayega)
             let isItemAvailable = false;
 
             if (itemData.inventory !== undefined && itemData.inventory > 0) {
@@ -139,12 +135,10 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
                 isItemAvailable = true;
             }
 
-            // Hard check if Swiggy sent explicit out of stock marker
             if (itemData.out_of_stock === true || itemData.is_out_of_stock === true || itemData.stock_status === 'OUT_OF_STOCK') {
                 isItemAvailable = false;
             }
 
-            // TRIGGER NOTIFICATION ONLY IF VALIDATED IN STOCK
             if (isItemAvailable) {
                 await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale location par item LIVE wapas aa gaya hai! 🔥\n\n💰 **Price:** ${price}\n\nLink:\n${originalUrl}`,
                     Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
@@ -152,7 +146,7 @@ async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
             }
         }
     } catch (e) {
-        // Silent catch for smooth tracking network jitter
+        // Silent catch
     }
 }
 
