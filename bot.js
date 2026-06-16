@@ -4,7 +4,7 @@ const express = require('express');
 
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
-const ADMIN_CHAT_ID = '7485181331'; 
+const ADMIN_CHAT_ID = '7485181331'; // Admin ID fixed
 const CHECK_INTERVAL = 15000; 
 const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
@@ -16,20 +16,31 @@ const FIXED_LNG = '77.305382';
 const bot = new Telegraf(BOT_TOKEN);
 const activeUsers = {};
 
-global.instamartApprovedList = global.instamartApprovedList || [ADMIN_CHAT_ID.toString()];
+// Waterproof Global Approved List initialization
+if (!global.instamartApprovedList) {
+    global.instamartApprovedList = [ADMIN_CHAT_ID.toString()];
+}
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Diagnosis Engine Live!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Access Engine Fixed Live!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Successful on ${PORT}`));
 
+// 🔥 NON-STOP JHATKA SYSTEM
 setInterval(() => {
     axios.get(RENDER_URL).catch(() => {}); 
 }, 30000); 
 
+// Helper function to strictly check user approval status
+function isUserApproved(userId) {
+    if (!userId) return false;
+    return global.instamartApprovedList.map(String).includes(userId.toString());
+}
+
 bot.on('callback_query', async (ctx) => {
     const data = ctx.callbackQuery.data;
     const chatId = ctx.chat.id.toString();
+    const clickerId = ctx.from.id.toString();
     
     if (data.startsWith('stop_url_')) {
         const index = parseInt(data.split('_')[2]);
@@ -42,19 +53,69 @@ bot.on('callback_query', async (ctx) => {
         }
         return ctx.answerCbQuery("⚠️ Already stopped.").catch(() => {});
     }
+
+    // Strict validation for admin action buttons
+    if (clickerId !== ADMIN_CHAT_ID.toString()) {
+        return ctx.answerCbQuery("❌ Unauthorized! Sirf Admin click kar sakta hai.").catch(() => {});
+    }
+    
+    const targetUserId = data.split('_')[1];
+    
+    if (data.startsWith('approve_')) {
+        if (!global.instamartApprovedList.map(String).includes(targetUserId.toString())) {
+            global.instamartApprovedList.push(targetUserId.toString());
+        }
+        await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✅ **Status: Approved!**`).catch(() => {});
+        await bot.telegram.sendMessage(targetUserId, "🥳 Aapka access approve ho gaya hai! Use karein: `/start_track <Instamart_URL>`").catch(() => {});
+    } else if (data.startsWith('decline_')) {
+        await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n❌ **Status: Declined!**`).catch(() => {});
+    }
+    await ctx.answerCbQuery().catch(() => {});
 });
 
 bot.start((ctx) => {
     const userId = ctx.from.id.toString();
-    if (global.instamartApprovedList.includes(userId)) {
-        return ctx.reply("🤖 Instamart Diagnosis Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/list_track`\n🔹 `/stop_all`");
+    const name = `${ctx.from.first_name || ''} ${ctx.from.last_name || ''}`.trim() || 'No Name';
+    
+    if (isUserApproved(userId)) {
+        return ctx.reply("🤖 Instamart Dual-Engine Tracker Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/list_track`\n🔹 `/stop_all`");
     }
-    ctx.reply(`🔒 **Access Denied!** ID: \`${userId}\``);
+    
+    ctx.reply(`🔒 **Access Denied!**\n\nAap abhi approved nahi hain.\nAapki Telegram ID: \`${userId}\`\n\nAdmin ke paas request bhej di gayi hai.`);
+    
+    // Send standard request with strict string values to Admin
+    bot.telegram.sendMessage(ADMIN_CHAT_ID, 
+        `🚨 **New Instamart Bot Request!**\n\n👤 Name: ${name}\n🆔 ID: \`${userId}\`\n\n👉 Approve karne ke liye niche click karein ya type karein:\n\`/approve ${userId}\``,
+        {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+                [
+                    Markup.button.callback('Approve ✅', `approve_${userId}`), 
+                    Markup.button.callback('Decline ❌', `decline_${userId}`)
+                ]
+            ])
+        }
+    ).catch(() => {});
+});
+
+bot.command('approve', (ctx) => {
+    if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return ctx.reply("❌ Sirf Admin hi approve kar sakta hai!");
+    const args = ctx.message.text.split(' ').filter(arg => arg.trim() !== '');
+    if (args.length < 2) return ctx.reply("⚠️ Format: `/approve <User_ID>`");
+    
+    const targetUserId = args[1].trim();
+    if (!global.instamartApprovedList.map(String).includes(targetUserId)) {
+        global.instamartApprovedList.push(targetUserId);
+        ctx.reply(`✅ User ID \`${targetUserId}\` ko access de diya gaya hai.`);
+        bot.telegram.sendMessage(targetUserId, "🥳 Aapka access approve ho gaya hai! Use karein: `/start_track <Instamart_URL>`").catch(() => {});
+    } else {
+        ctx.reply("⚠️ Yeh user pehle se hi approved hai.");
+    }
 });
 
 bot.command('start_track', async (ctx) => {
     const userId = ctx.from.id.toString();
-    if (!global.instamartApprovedList.includes(userId)) return ctx.reply("❌ Unapproved!");
+    if (!isUserApproved(userId)) return ctx.reply("❌ Access Denied! Aap approved nahi hain.");
     
     const chatId = ctx.chat.id.toString();
     const args = ctx.message.text.replace(/\n/g, ' ').split(' ').filter(arg => arg.trim() !== '');
@@ -120,10 +181,10 @@ async function checkInstamartDualEngine(ctx, chatId, itemId, originalUrl) {
             }
         }
     } catch (err) {
-        console.log(`⚠️ Engine 1 (API) Blocked or Failed: ${err.message}`);
+        console.log(`⚠️ Engine 1 (API) Failed: ${err.message}`);
     }
 
-    // --- ENGINE 2: WEB HTML SCRAPING FALLBACK (Runs only if Engine 1 fails or is blocked) ---
+    // --- ENGINE 2: WEB HTML SCRAPING FALLBACK ---
     if (!engine1Success) {
         try {
             const webResponse = await axios.get(originalUrl, {
@@ -137,7 +198,6 @@ async function checkInstamartDualEngine(ctx, chatId, itemId, originalUrl) {
             const html = webResponse.data;
             const lowerHtml = html.toLowerCase();
 
-            // Strict Validation Check
             const isSoldOut = lowerHtml.includes('out of stock') || 
                               lowerHtml.includes('currently unavailable') || 
                               lowerHtml.includes('item unavailable') || 
@@ -151,7 +211,7 @@ async function checkInstamartDualEngine(ctx, chatId, itemId, originalUrl) {
                 return triggerAlert(chatId, itemId, price, originalUrl, itemIndex);
             }
         } catch (webErr) {
-            console.log(`⚠️ Engine 2 (Web) Also Failed: ${webErr.message}`);
+            console.log(`⚠️ Engine 2 (Web) Failed: ${webErr.message}`);
         }
     }
 }
@@ -162,4 +222,4 @@ async function triggerAlert(chatId, itemId, price, originalUrl, itemIndex) {
     ).catch(() => {});
 }
 
-bot.launch().then(() => console.log("Instamart Dual-Engine Diagnostic Bot Live..."));
+bot.launch().then(() => console.log("Instamart Access Strict Fixed Engine Live..."));
