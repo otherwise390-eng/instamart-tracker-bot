@@ -9,9 +9,9 @@ const ADMIN_CHAT_ID = '7485181331';
 const CHECK_INTERVAL = 15000; 
 const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
-// 📍 LOCKED HYPERLOCAL LOCATION COORDINATES
-const FIXED_LAT = '28.708';  
-const FIXED_LNG = '77.305';  
+// 📍 FIXED LOCATION: SONU SAGAR DAIRY LOCKED INTERNAL COORDINATES
+const FIXED_LAT = '28.708143';  
+const FIXED_LNG = '77.305382';  
 // ---------------------
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -26,7 +26,7 @@ const USER_AGENTS = [
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Price Engine Live!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Clean Price Engine Live!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Successful on ${PORT}`));
 
 // 🔥 NON-STOP JHATKA SYSTEM
@@ -70,21 +70,10 @@ bot.on('callback_query', async (ctx) => {
 
 bot.start((ctx) => {
     const userId = ctx.from.id.toString();
-    const name = `${ctx.from.first_name || ''} ${ctx.from.last_name || ''}`.trim() || 'No Name';
-    
     if (global.instamartApprovedList.includes(userId)) {
         return ctx.reply("🤖 Instamart Tracker Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/list_track`\n🔹 `/stop_all`");
     }
-    
-    ctx.reply(`🔒 **Access Denied!**\n\nAap abhi approved nahi hain.\nAapki Telegram ID: \`${userId}\`\n\nAdmin ko apni ID send karein approval ke liye.`);
-    
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, 
-        `🚨 **New Instamart Bot Request!**\n\n👤 Name: ${name}\n🆔 ID: \`${userId}\`\n\n👉 Approve manually:\n\`/approve ${userId}\``,
-        {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([[Markup.button.callback('Approve ✅', `approve_${userId}`), Markup.button.callback('Decline ❌', `decline_${userId}`)]])
-        }
-    ).catch(() => {});
+    ctx.reply(`🔒 **Access Denied!** ID: \`${userId}\``);
 });
 
 bot.command('approve', (ctx) => {
@@ -115,7 +104,7 @@ bot.command('start_track', async (ctx) => {
     const intervalId = setInterval(() => { checkInstamartStock(ctx, chatId, instamartLink, FIXED_LAT, FIXED_LNG); }, CHECK_INTERVAL);
     activeUsers[chatId].push({ url: instamartLink, interval: intervalId });
     
-    ctx.reply(`🚀 **Hyperlocal Tracking Active!**\n📍 Location Fixed Internally: \`${FIXED_LAT}, ${FIXED_LNG}\`\nStock check shuru ho gaya hai...`);
+    ctx.reply(`🚀 **Hyperlocal Tracking Active!**\n📍 Location Fixed: *Sonu Sagar Dairy*\nStock check shuru ho gaya hai...`);
     checkInstamartStock(ctx, chatId, instamartLink, FIXED_LAT, FIXED_LNG);
 });
 
@@ -152,7 +141,7 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
             headers: { 
                 'User-Agent': randomAgent, 
                 'Accept-Language': 'en-US,en;q=0.9',
-                'Cookie': `_lat=${lat}; _lng=${lng}; locationAddress=Locked_Area;`
+                'Cookie': `_lat=${lat}; _lng=${lng}; locationAddress=Sonu_Sagar_Dairy;`
             }, 
             timeout: 10000 
         });
@@ -160,35 +149,44 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
         const $ = cheerio.load(response.data);
         const pageText = $('body').text().toLowerCase();
         
-        // --- 🔎 DYNAMIC PRICE SCRAPER ENGINE ---
+        // --- 🔎 CLEAN PRICE SCRAPER ENGINE (Removes junk like /a) ---
         let productPrice = "N/A";
-        
-        // Instamart ke alag-alag design se price nikalne ke selectors
-        const priceSelectors = [
-            'span[class*="price"]', 
-            'div[class*="Price"]', 
-            'span[style*="currency"]', 
-            'div[class*="styles_price"]'
-        ];
+        const priceSelectors = ['span[class*="price"]', 'div[class*="Price"]', 'span[style*="currency"]', 'div[class*="styles_price"]', 'div[class*="itemPrice"]'];
         
         for (let selector of priceSelectors) {
-            const priceTxt = $(selector).first().text().trim();
-            if (priceTxt && (priceTxt.includes('₹') || /\d/.test(priceTxt))) {
-                productPrice = priceTxt;
-                break;
+            let priceTxt = $(selector).first().text().trim();
+            if (priceTxt) {
+                // Remove unwanted text/slashes, keep only Currency sign and digits
+                priceTxt = priceTxt.replace(/[^₹0-9.]/g, '').trim();
+                if (priceTxt && /\d/.test(priceTxt)) {
+                    productPrice = priceTxt.includes('₹') ? priceTxt : `₹${priceTxt}`;
+                    break;
+                }
             }
         }
-        // ----------------------------------------
 
-        const isOutOfStock = pageText.includes('out of stock') || 
-                             pageText.includes('item unavailable') || 
-                             pageText.includes('not deliverable') ||
-                             pageText.includes('currently unavailable');
-                             
-        const isAvailable = pageText.includes('add') || pageText.includes('add to cart') || pageText.includes('in stock');
+        // --- 🎯 REAL-TIME ACCURACY STOCK TESTER ---
+        const hasOutOfStockTag = $('div[class*="outOfStock"]').length || $('div[class*="Unavailable"]').length || $('div[class*="soldOut"]').length;
+        const outOfStockText = pageText.includes('out of stock') || pageText.includes('currently unavailable') || pageText.includes('item unavailable') || pageText.includes('not deliverable');
         
-        if (!isOutOfStock && isAvailable) {
-            await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai aapki locked location pr item wapas aa gaya hai! 🔥\n\n💰 **Price:** ${productPrice}\n\nLink:\n${targetUrl}`,
+        // Target specifically main dynamic buttons to avoid footer block alerts
+        const mainAddButton = $('div[class*="item_container"]').find('div[class*="add_button"]').length || 
+                             $('button[class*="add-to-cart"]').length || 
+                             $('div[class*="AddButton"]').length || 
+                             pageText.includes('add button');
+
+        let isActuallySoldOut = false;
+        let isActuallyAvailable = false;
+
+        if (hasOutOfStockTag || outOfStockText) {
+            isActuallySoldOut = true;
+        } else if (mainAddButton || pageText.includes('add to cart')) {
+            isActuallyAvailable = true;
+        }
+
+        // STRICT GATEKEEPER: Instock selection filter
+        if (!isActuallySoldOut && isActuallyAvailable) {
+            await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale area pr item wapas aa gaya hai! 🔥\n\n💰 **Price:** ${productPrice}\n\nLink:\n${targetUrl}`,
                 Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
             ).catch(() => {});
         }
@@ -197,5 +195,4 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
     }
 }
 
-bot.js = "Instamart Price Secured";
-bot.launch().then(() => console.log("Instamart Price Engine Connected..."));
+bot.launch().then(() => console.log("Instamart Accurate Price Engine Connected..."));
