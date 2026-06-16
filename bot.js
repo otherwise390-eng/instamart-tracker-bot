@@ -7,7 +7,7 @@ const express = require('express');
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
 const ADMIN_CHAT_ID = '7485181331'; 
 const CHECK_INTERVAL = 15000; // Har 15 Seconds me Stock Check hoga
-const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; // 🔥 Aapka Naya Live URL Lock Ho Gaya!
+const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
 // 📍 LOCKED HYPERLOCAL LOCATION COORDINATES
 const FIXED_LAT = '28.708';  
@@ -34,7 +34,7 @@ app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Succe
 // 🔥 NON-STOP JHATKA SYSTEM (SERVER KO SOYNE NAHI DEGA, LOGS EKDOM CLEAN)
 setInterval(() => {
     axios.get(RENDER_URL).catch(() => {}); 
-}, 30000); // Strict 30 Seconds Loop!
+}, 30000); 
 
 bot.on('callback_query', async (ctx) => {
     const data = ctx.callbackQuery.data;
@@ -72,18 +72,10 @@ bot.on('callback_query', async (ctx) => {
 
 bot.start((ctx) => {
     const userId = ctx.from.id.toString();
-    const name = `${ctx.from.first_name || ''} ${ctx.from.last_name || ''}`.trim() || 'No Name';
-    
     if (global.instamartApprovedList.includes(userId)) {
         return ctx.reply("🤖 Instamart Tracker Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/list_track`\n🔹 `/stop_all`");
     }
-    
-    ctx.reply(`🔒 **Access Denied!**\n\nAap abhi approved nahi hain.\nAapki Telegram ID: \`${userId}\`\n\nAdmin ko apni ID send karein approval ke liye.`);
-    
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, 
-        `🚨 **New Instamart Bot Request!**\n\n👤 Name: ${name}\n🆔 ID: \`${userId}\`\n\n👉 Approve manually:\n\`/approve ${userId}\``,
-        Markup.inlineKeyboard([[Markup.button.callback('Approve ✅', `approve_${userId}`), Markup.button.callback('Decline ❌', `decline_${userId}`)]])
-    ).catch(() => {});
+    ctx.reply(`🔒 **Access Denied!** ID: \`${userId}\``);
 });
 
 bot.command('approve', (ctx) => {
@@ -94,31 +86,6 @@ bot.command('approve', (ctx) => {
     if (!global.instamartApprovedList.includes(targetUserId)) {
         global.instamartApprovedList.push(targetUserId);
         ctx.reply(`✅ User ID \`${targetUserId}\` approved.`);
-        bot.telegram.sendMessage(targetUserId, "🥳 Approved! Use: `/start_track <Instamart_URL>`");
-    }
-});
-
-bot.command('list_users', (ctx) => {
-    if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return ctx.reply("❌ Admin Only!");
-    if (global.instamartApprovedList.length <= 1) return ctx.reply("👥 Koyi approved user nahi hai.");
-    let msg = "👥 **Approved Users:**\n\n";
-    global.instamartApprovedList.forEach((userId, i) => { if (userId !== ADMIN_CHAT_ID) msg += `${i}. \`${userId}\`\n`; });
-    ctx.reply(msg, { parse_mode: 'Markdown' });
-});
-
-bot.command('remove_user', (ctx) => {
-    if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return ctx.reply("❌ Admin Only!");
-    const args = ctx.message.text.split(' ').filter(arg => arg.trim() !== '');
-    if (args.length < 2) return ctx.reply("⚠️ Format: `/remove_user <User_ID>`");
-    const targetUserId = args[1].trim();
-    const index = global.instamartApprovedList.indexOf(targetUserId);
-    if (index > -1) {
-        global.instamartApprovedList.splice(index, 1);
-        if (activeUsers[targetUserId]) {
-            activeUsers[targetUserId].forEach(item => clearInterval(item.interval));
-            delete activeUsers[targetUserId];
-        }
-        ctx.reply(`✅ User ID ${targetUserId} removed.`);
     }
 });
 
@@ -129,13 +96,13 @@ bot.command('start_track', async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const args = ctx.message.text.replace(/\n/g, ' ').split(' ').filter(arg => arg.trim() !== '');
     
-    const instamartLink = args.find(arg => arg.includes('swiggy.com/instamart'));
+    // 🔥 FIXED LINK FILTER: Ab ye naye aur purane dono links ko accept karega!
+    const instamartLink = args.find(arg => arg.includes('swiggy.com/instamart') || arg.includes('swiggy.com/stores/instamart'));
     if (!instamartLink) return ctx.reply("❌ Valid Swiggy Instamart link bhejo!");
     
     if (!activeUsers[chatId]) activeUsers[chatId] = [];
     if (activeUsers[chatId].some(item => item.url === instamartLink)) return ctx.reply("⚠️ Pehle se track ho raha hai!");
     
-    // Auto-inject locked lat/lng into tracking engine
     const intervalId = setInterval(() => { checkInstamartStock(ctx, chatId, instamartLink, FIXED_LAT, FIXED_LNG); }, CHECK_INTERVAL);
     activeUsers[chatId].push({ url: instamartLink, interval: intervalId });
     
@@ -176,7 +143,6 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
             headers: { 
                 'User-Agent': randomAgent, 
                 'Accept-Language': 'en-US,en;q=0.9',
-                // Spreading cookies for hyperlocal location injection
                 'Cookie': `_lat=${lat}; _lng=${lng}; locationAddress=Locked_Area;`
             }, 
             timeout: 10000 
