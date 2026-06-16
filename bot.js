@@ -19,49 +19,39 @@ const activeUsers = {};
 
 global.instamartApprovedList = global.instamartApprovedList || [ADMIN_CHAT_ID.toString()];
 
-// Heavy Real-Device Headers to prevent Swiggy from blocking/sending fake pages
 const REAL_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/605.1.15',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
     'Cache-Control': 'max-age=0'
 };
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Anti-Block Engine Online!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Text Engine Live!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Successful on ${PORT}`));
 
-// 🔥 NON-STOP JHATKA SYSTEM
 setInterval(() => {
     axios.get(RENDER_URL).catch(() => {}); 
 }, 30000); 
 
 bot.on('callback_query', async (ctx) => {
     const data = ctx.callbackQuery.data;
-    const userId = ctx.from.id.toString();
+    const chatId = ctx.chat.id.toString();
     
     if (data.startsWith('stop_url_')) {
         const index = parseInt(data.split('_')[2]);
-        const chatId = ctx.chat.id.toString();
-        
         if (activeUsers[chatId] && activeUsers[chatId][index]) {
             const removedItem = activeUsers[chatId][index];
             clearInterval(removedItem.interval);
             activeUsers[chatId].splice(index, 1);
             await ctx.answerCbQuery("Tracking band kar di gayi hai! 🛑").catch(() => {});
             return ctx.reply(`🛑 Tracking stopped for:\n${removedItem.url}`, { disable_web_page_preview: true });
-        } else {
-            return ctx.answerCbQuery("⚠️ Already stopped.").catch(() => {});
         }
+        return ctx.answerCbQuery("⚠️ Already stopped.").catch(() => {});
     }
 
-    if (userId !== ADMIN_CHAT_ID.toString()) return ctx.answerCbQuery("❌ Unauthorized!").catch(() => {});
+    if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return ctx.answerCbQuery("❌ Unauthorized!").catch(() => {});
     const targetUserId = data.split('_')[1];
     
     if (data.startsWith('approve_')) {
@@ -106,7 +96,6 @@ bot.command('start_track', async (ctx) => {
     let instamartLink = args.find(arg => arg.includes('swiggy.com/instamart') || arg.includes('swiggy.com/stores/instamart'));
     if (!instamartLink) return ctx.reply("❌ Valid Swiggy Instamart link bhejo!");
     
-    // Clean query parameters to fetch pure product page structure
     if (instamartLink.includes('?')) {
         instamartLink = instamartLink.split('?')[0];
     }
@@ -157,65 +146,53 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
         });
         
         const $ = cheerio.load(response.data);
-        const htmlContent = response.data;
+        const pageText = $('body').text();
+        const pageTextLower = pageText.toLowerCase();
         
-        // --- 🧪 DEEP METADATA SCRAPER (100% ACCURATE) ---
-        // Yeh website ke text ko chhod kar piche chhupi official JSON script se stock padhega
-        let isOutOfStock = false;
+        // --- 🔎 TEXT-BASED PRICE ENGINE ---
         let productPrice = "N/A";
+        const priceSelectors = ['span[class*="price"]', 'div[class*="Price"]', 'span[style*="currency"]', 'div[class*="styles_price"]', 'div[class*="itemPrice"]', 'span[class*="itemPrice"]'];
         
-        // Target high fidelity json script tags
-        const scriptJson = $('script[type="application/ld+json"]').html();
-        if (scriptJson) {
-            try {
-                const parsedJson = JSON.parse(scriptJson);
-                // Check schema availability status
-                if (parsedJson.offers && parsedJson.offers.availability) {
-                    const availability = parsedJson.offers.availability.toLowerCase();
-                    if (availability.includes('outofstock') || availability.includes('discontinued')) {
-                        isOutOfStock = true;
-                    }
-                    if (parsedJson.offers.price) {
-                        productPrice = `₹${parsedJson.offers.price}`;
-                    }
+        for (let selector of priceSelectors) {
+            let priceTxt = $(selector).first().text().trim();
+            if (priceTxt) {
+                priceTxt = priceTxt.replace(/[^₹0-9.]/g, '').trim();
+                if (priceTxt && /\d/.test(priceTxt)) {
+                    productPrice = priceTxt.includes('₹') ? priceTxt : `₹${priceTxt}`;
+                    break;
                 }
-            } catch (jsErr) {
-                // Failover inside script parser
             }
         }
 
-        // --- 🎯 BACKUP FAILSAFE CORRECTION ENGINE ---
-        // Agar main script kisi vajah se miss hui toh hi ye chalega
-        const pageTextLower = $('body').text().toLowerCase();
-        
-        const textIndicatesSoldOut = pageTextLower.includes('out of stock') || 
-                                     pageTextLower.includes('currently unavailable') || 
-                                     pageTextLower.includes('item unavailable') || 
-                                     pageTextLower.includes('sold out') ||
-                                     pageTextLower.includes('not deliverable');
-
-        // Check explicit out of stock selectors
-        const hasSoldOutClasses = $('div[class*="outOfStock"]').length > 0 || 
+        // --- 🎯 REAL VISUAL ELEMENTS STOCK TRACKER ---
+        // 1. Check if Swiggy strictly added Out Of Stock block overlay
+        const hasOutOfStockClass = $('div[class*="outOfStock"]').length > 0 || 
                                   $('div[class*="soldOut"]').length > 0 || 
-                                  $('div[class*="Unavailable"]').length > 0;
+                                  $('div[class*="Unavailable"]').length > 0 ||
+                                  $('div[class*="OutOfStock"]').length > 0;
 
-        if (textIndicatesSoldOut || hasSoldOutClasses) {
-            isOutOfStock = true;
+        const hasOutOfStockText = pageTextLower.includes('out of stock') || 
+                                  pageTextLower.includes('currently unavailable') || 
+                                  pageTextLower.includes('item unavailable') || 
+                                  pageTextLower.includes('not deliverable');
+
+        let isSoldOut = false;
+        if (hasOutOfStockClass || hasOutOfStockText) {
+            isSoldOut = true;
         }
 
-        // Exact Main ADD Element validation
-        const hasAddText = htmlContent.includes('"ADD"') || htmlContent.includes('>ADD<') || htmlContent.includes('>Add<');
+        // 2. Main Native ADD button check
+        const hasAddText = pageText.includes('ADD') || pageText.includes('Add') || pageTextLower.includes('+ add');
 
-        // 🔥 STRICT GATEKEEPER TRIGGER CONTROL
-        // Agar item explicitly out of stock nahi hai, aur page par real data block hai tabhi alert dega
-        if (!isOutOfStock && hasAddText && !pageTextLower.includes('please login')) {
+        // TRIGGER ALARM: If NOT sold out and ADD text is active on page
+        if (!isSoldOut && hasAddText && !pageTextLower.includes('please login')) {
             await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale area pr item wapas aa gaya hai! 🔥\n\n💰 **Price:** ${productPrice}\n\nLink:\n${targetUrl}`,
                 Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
             ).catch(() => {});
         }
     } catch (e) {
-        // Silent block protection
+        // Anti-crash safety block
     }
 }
 
-bot.launch().then(() => console.log("Instamart Bulletproof Anti-Fake Alert Engine Connected..."));
+bot.launch().then(() => console.log("Instamart Direct Visual Engine Connected..."));
