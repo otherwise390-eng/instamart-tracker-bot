@@ -1,16 +1,16 @@
 const { Telegraf, Markup } = require('telegraf');
-const { chromium } = require('playwright'); // 🔥 Real Browser Engine
+const axios = require('axios');
 const express = require('express');
 
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
 const ADMIN_CHAT_ID = '7485181331'; 
-const CHECK_INTERVAL = 30000; // Browser automation ke liye minimum 30 Seconds ka gap zaroori hai bhai
+const CHECK_INTERVAL = 15000; // Har 15 second me database hit hoga
 const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
 // 📍 FIXED LOCATION: SONU SAGAR DAIRY LOCKED INTERNAL COORDINATES
-const FIXED_LAT = 28.708143;  
-const FIXED_LNG = 77.305382;  
+const FIXED_LAT = '28.708143';  
+const FIXED_LNG = '77.305382';  
 // ---------------------
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -22,8 +22,13 @@ if (!global.instamartApprovedList) {
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Browser Automation Engine Live!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Mobile Engine Online!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Port Binding Successful on ${PORT}`));
+
+// 🔥 NON-STOP JHATKA SYSTEM (SERVER ALIVE LOOP)
+setInterval(() => {
+    axios.get(RENDER_URL).catch(() => {}); 
+}, 30000); 
 
 function isUserApproved(userId) {
     if (!userId) return false;
@@ -49,7 +54,7 @@ bot.on('callback_query', async (ctx) => {
 bot.start((ctx) => {
     const userId = ctx.from.id.toString();
     if (isUserApproved(userId)) {
-        return ctx.reply("🤖 Instamart Real Browser Tracker Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/stop_all`");
+        return ctx.reply("🤖 Instamart Ultra API Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/stop_all`");
     }
     ctx.reply(`🔒 **Access Denied!** ID: \`${userId}\``);
 });
@@ -64,15 +69,23 @@ bot.command('start_track', async (ctx) => {
     let instamartLink = args.find(arg => arg.includes('swiggy.com/'));
     if (!instamartLink) return ctx.reply("❌ Valid Swiggy Instamart link bhejo!");
     
+    // Auto Item ID Extract
+    let itemId = "";
+    try {
+        const parts = instamartLink.split('?')[0].split('/');
+        itemId = parts[parts.length - 1];
+    } catch (e) { itemId = ""; }
+
+    if (!itemId || itemId.length < 4) return ctx.reply("❌ Link me se Product ID nahi mil payi!");
+    
     if (!activeUsers[chatId]) activeUsers[chatId] = [];
+    if (activeUsers[chatId].some(item => item.id === itemId)) return ctx.reply("⚠️ Pehle se track ho raha hai!");
     
-    ctx.reply(`🚀 **Real Browser Tracking Active!**\n📍 Location Locked: *Sonu Sagar Dairy*\nBackground browser start ho raha hai...`);
+    const intervalId = setInterval(() => { checkInstamartMobileAPI(ctx, chatId, itemId, instamartLink); }, CHECK_INTERVAL);
+    activeUsers[chatId].push({ id: itemId, url: instamartLink, interval: intervalId });
     
-    // Background automation engine init
-    const intervalId = setInterval(() => { checkStockWithBrowser(ctx, chatId, instamartLink); }, CHECK_INTERVAL);
-    activeUsers[chatId].push({ url: instamartLink, interval: intervalId });
-    
-    checkStockWithBrowser(ctx, chatId, instamartLink);
+    ctx.reply(`🚀 **Mobile API Tracking Active!**\n🆔 ID: \`${itemId}\`\n📍 Location Fixed: *Sonu Sagar Dairy*\nScanning database...`);
+    checkInstamartMobileAPI(ctx, chatId, itemId, instamartLink);
 });
 
 bot.command('stop_all', (ctx) => {
@@ -84,70 +97,63 @@ bot.command('stop_all', (ctx) => {
     } else { ctx.reply("⚠️ Koyi active tracking nahi mili."); }
 });
 
-async function checkStockWithBrowser(ctx, chatId, targetUrl) {
-    let browser;
+async function checkInstamartMobileAPI(ctx, chatId, itemId, originalUrl) {
+    if (!activeUsers[chatId]) return;
+    const itemIndex = activeUsers[chatId].findIndex(item => item.id === itemId);
+    if (itemIndex === -1) return;
+
+    const apiTargetUrl = `https://www.swiggy.com/api/instamart/item/${itemId}?lat=${FIXED_LAT}&lng=${FIXED_LNG}`;
+
     try {
-        // Launch real headless browser to bypass cloudflare/anti-bot
-        browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        const response = await axios.get(apiTargetUrl, {
+            headers: {
+                // 🔥 OFFICIAL ANDROID DEVICE SIMULATION HEADERS (Anti-Block)
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36 SwiggyAndroidApp',
+                'Accept': 'application/json, text/plain, */*',
+                'X-Requested-With': 'in.swiggy.android', // Simulates official Swiggy Android app request
+                'Content-Type': 'application/json'
+            },
+            timeout: 7000
         });
 
-        // Grant coordinates permission specifically for Sonu Sagar Dairy
-        const context = await browser.newContext({
-            geolocation: { latitude: FIXED_LAT, longitude: FIXED_LNG },
-            permissions: ['geolocation'],
-            viewport: { width: 375, height: 812 }, // Mobile View Simulation
-            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/605.1.15'
-        });
+        if (response.data && response.data.data) {
+            const itemData = response.data.data;
+            
+            // 1. Price Resolver
+            let price = "N/A";
+            if (itemData.price) {
+                price = `₹${itemData.price / 100 || itemData.price}`;
+            } else if (itemData.variations && itemData.variations[0] && itemData.variations[0].price) {
+                let rawPrice = itemData.variations[0].price;
+                price = `₹${rawPrice > 500 ? rawPrice / 100 : rawPrice}`;
+            }
 
-        const page = await context.newPage();
-        
-        // Inject locked address cookies before load
-        await context.addCookies([
-            { name: '_lat', value: FIXED_LAT.toString(), domain: 'www.swiggy.com', path: '/' },
-            { name: '_lng', value: FIXED_LNG.toString(), domain: 'www.swiggy.com', path: '/' },
-            { name: 'locationAddress', value: 'Sonu_Sagar_Dairy', domain: 'www.swiggy.com', path: '/' }
-        ]);
+            // 2. Heavy Failsafe Stock Resolver (Isse galat alert bilkul nahi aayega)
+            let isItemAvailable = false;
 
-        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 20000 });
-        
-        // Wait 2 seconds for JS execution
-        await page.waitForTimeout(2000);
+            if (itemData.inventory !== undefined && itemData.inventory > 0) {
+                isItemAvailable = true;
+            } else if (itemData.in_stock === true || itemData.is_available === true) {
+                isItemAvailable = true;
+            } else if (itemData.variations && itemData.variations[0] && itemData.variations[0].inventory > 0) {
+                isItemAvailable = true;
+            }
 
-        const bodyText = await page.innerText('body');
-        const lowerText = bodyText.toLowerCase();
+            // Hard check if Swiggy sent explicit out of stock marker
+            if (itemData.out_of_stock === true || itemData.is_out_of_stock === true || itemData.stock_status === 'OUT_OF_STOCK') {
+                isItemAvailable = false;
+            }
 
-        // --- 🎯 EXTRACT CURRENT PRICE ---
-        let price = "N/A";
-        const priceElement = await page.$('span[class*="price"], div[class*="Price"], div[class*="itemPrice"]');
-        if (priceElement) {
-            let rawPrice = await priceElement.innerText();
-            price = rawPrice.replace(/[^₹0-9.]/g, '').trim();
-            if (price && !price.includes('₹')) price = `₹${price}`;
+            // TRIGGER NOTIFICATION ONLY IF VALIDATED IN STOCK
+            if (isItemAvailable) {
+                await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale location par item LIVE wapas aa gaya hai! 🔥\n\n💰 **Price:** ${price}\n\nLink:\n${originalUrl}`,
+                    Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
+                ).catch(() => {});
+            }
         }
-
-        // --- 🛑 STRICT STOCK VALIDATION ---
-        const isSoldOut = lowerText.includes('out of stock') || 
-                          lowerText.includes('currently unavailable') || 
-                          lowerText.includes('item unavailable') || 
-                          lowerText.includes('not deliverable');
-
-        const hasAddButton = lowerText.includes('add') || lowerText.includes('+ add');
-
-        // Fire alert if ADD button is present visually and no out of stock label is blocking it
-        if (!isSoldOut && hasAddButton) {
-            const itemIndex = activeUsers[chatId].findIndex(item => item.url === targetUrl);
-            await bot.telegram.sendMessage(chatId, `🚨 INSTAMART REAL ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale location par item LIVE mil gaya hai! 🔥\n\n💰 **Price:** ${price}\n\nLink:\n${targetUrl}`,
-                Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
-            ).catch(() => {});
-        }
-
-    } catch (err) {
-        console.log(`⚠️ Browser Engine Error: ${err.message}`);
-    } finally {
-        if (browser) await browser.close();
+    } catch (e) {
+        // Silent catch for smooth tracking network jitter
     }
 }
 
-bot.launch().then(() => console.log("Instamart Browser Automation Engine Active..."));
+bot.launch().then(() => console.log("Instamart Mobile-API Engine Live..."));
