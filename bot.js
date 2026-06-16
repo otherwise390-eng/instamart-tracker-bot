@@ -5,7 +5,7 @@ const express = require('express');
 
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8501862664:AAGI3rJVaW4c9Baud3hXs7WO2Ryi0wuxfjA'; 
-const ADMIN_CHAT_ID = '7485181331'; // 🔥 Aapki Admin ID ekdum lock hai!
+const ADMIN_CHAT_ID = '7485181331'; 
 const CHECK_INTERVAL = 15000; 
 const RENDER_URL = 'https://instamart-tracker-bot.onrender.com/'; 
 
@@ -24,10 +24,9 @@ const USER_AGENTS = [
     'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
 ];
 
-// --- EXPRESS SERVER FOR PORT BINDING ---
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Notification Engine Fixed!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Price Engine Live!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Successful on ${PORT}`));
 
 // 🔥 NON-STOP JHATKA SYSTEM
@@ -54,9 +53,7 @@ bot.on('callback_query', async (ctx) => {
         }
     }
 
-    // Strict Admin Verification for Callback Buttons
-    if (userId !== ADMIN_CHAT_ID.toString()) return ctx.answerCbQuery("❌ Unauthorized! Admin Only.").catch(() => {});
-    
+    if (userId !== ADMIN_CHAT_ID.toString()) return ctx.answerCbQuery("❌ Unauthorized!").catch(() => {});
     const targetUserId = data.split('_')[1];
     
     if (data.startsWith('approve_')) {
@@ -75,27 +72,19 @@ bot.start((ctx) => {
     const userId = ctx.from.id.toString();
     const name = `${ctx.from.first_name || ''} ${ctx.from.last_name || ''}`.trim() || 'No Name';
     
-    // Check if user is already approved (Admin is default approved)
     if (global.instamartApprovedList.includes(userId)) {
         return ctx.reply("🤖 Instamart Tracker Bot Active!\n\n🔹 **Format:**\n`/start_track <Instamart_URL>`\n\n🔹 `/list_track`\n🔹 `/stop_all`");
     }
     
-    // Non-approved user response
     ctx.reply(`🔒 **Access Denied!**\n\nAap abhi approved nahi hain.\nAapki Telegram ID: \`${userId}\`\n\nAdmin ko apni ID send karein approval ke liye.`);
     
-    // 🔥 FIXED ADMIN NOTIFICATION ENGINE (Bypassed string errors)
     bot.telegram.sendMessage(ADMIN_CHAT_ID, 
         `🚨 **New Instamart Bot Request!**\n\n👤 Name: ${name}\n🆔 ID: \`${userId}\`\n\n👉 Approve manually:\n\`/approve ${userId}\``,
         {
             parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-                [
-                    Markup.button.callback('Approve ✅', `approve_${userId}`), 
-                    Markup.button.callback('Decline ❌', `decline_${userId}`)
-                ]
-            ])
+            ...Markup.inlineKeyboard([[Markup.button.callback('Approve ✅', `approve_${userId}`), Markup.button.callback('Decline ❌', `decline_${userId}`)]])
         }
-    ).catch((err) => console.log("Admin notification sending failed:", err.message));
+    ).catch(() => {});
 });
 
 bot.command('approve', (ctx) => {
@@ -107,8 +96,6 @@ bot.command('approve', (ctx) => {
         global.instamartApprovedList.push(targetUserId);
         ctx.reply(`✅ User ID \`${targetUserId}\` approved successfully.`);
         bot.telegram.sendMessage(targetUserId, "🥳 Approved! Use: `/start_track <Instamart_URL>`").catch(() => {});
-    } else {
-        ctx.reply("⚠️ Yeh user pehle se approved hai.");
     }
 });
 
@@ -148,7 +135,7 @@ bot.command('stop_all', (ctx) => {
     const chatId = ctx.chat.id.toString();
     if (activeUsers[chatId] && activeUsers[chatId].length > 0) {
         activeUsers[chatId].forEach(item => clearInterval(item.interval));
-        delete activeUsers[targetUserId]; // Fixed reference
+        delete activeUsers[chatId];
         ctx.reply("🛑 Saari tracking band kar di gayi.");
     } else { ctx.reply("⚠️ Koyi active tracking nahi mili."); }
 });
@@ -173,6 +160,26 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
         const $ = cheerio.load(response.data);
         const pageText = $('body').text().toLowerCase();
         
+        // --- 🔎 DYNAMIC PRICE SCRAPER ENGINE ---
+        let productPrice = "N/A";
+        
+        // Instamart ke alag-alag design se price nikalne ke selectors
+        const priceSelectors = [
+            'span[class*="price"]', 
+            'div[class*="Price"]', 
+            'span[style*="currency"]', 
+            'div[class*="styles_price"]'
+        ];
+        
+        for (let selector of priceSelectors) {
+            const priceTxt = $(selector).first().text().trim();
+            if (priceTxt && (priceTxt.includes('₹') || /\d/.test(priceTxt))) {
+                productPrice = priceTxt;
+                break;
+            }
+        }
+        // ----------------------------------------
+
         const isOutOfStock = pageText.includes('out of stock') || 
                              pageText.includes('item unavailable') || 
                              pageText.includes('not deliverable') ||
@@ -181,7 +188,7 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
         const isAvailable = pageText.includes('add') || pageText.includes('add to cart') || pageText.includes('in stock');
         
         if (!isOutOfStock && isAvailable) {
-            await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai aapki locked location pr item wapas aa gaya hai! 🔥\n\nLink:\n${targetUrl}`,
+            await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai aapki locked location pr item wapas aa gaya hai! 🔥\n\n💰 **Price:** ${productPrice}\n\nLink:\n${targetUrl}`,
                 Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
             ).catch(() => {});
         }
@@ -190,4 +197,5 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
     }
 }
 
-bot.launch().then(() => console.log("Instamart Fixed Location Notification Secured..."));
+bot.js = "Instamart Price Secured";
+bot.launch().then(() => console.log("Instamart Price Engine Connected..."));
