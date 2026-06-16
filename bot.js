@@ -19,15 +19,22 @@ const activeUsers = {};
 
 global.instamartApprovedList = global.instamartApprovedList || [ADMIN_CHAT_ID.toString()];
 
-const USER_AGENTS = [
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/605.1.15',
-    'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-];
+// Heavy Real-Device Headers to prevent Swiggy from blocking/sending fake pages
+const REAL_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/605.1.15',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0'
+};
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart ADD Engine Fixed Live!'));
+app.get('/', (req, res) => res.status(200).send('Instamart Anti-Block Engine Online!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Successful on ${PORT}`));
 
 // 🔥 NON-STOP JHATKA SYSTEM
@@ -96,8 +103,13 @@ bot.command('start_track', async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const args = ctx.message.text.replace(/\n/g, ' ').split(' ').filter(arg => arg.trim() !== '');
     
-    const instamartLink = args.find(arg => arg.includes('swiggy.com/instamart') || arg.includes('swiggy.com/stores/instamart'));
+    let instamartLink = args.find(arg => arg.includes('swiggy.com/instamart') || arg.includes('swiggy.com/stores/instamart'));
     if (!instamartLink) return ctx.reply("❌ Valid Swiggy Instamart link bhejo!");
+    
+    // Clean query parameters to fetch pure product page structure
+    if (instamartLink.includes('?')) {
+        instamartLink = instamartLink.split('?')[0];
+    }
     
     if (!activeUsers[chatId]) activeUsers[chatId] = [];
     if (activeUsers[chatId].some(item => item.url === instamartLink)) return ctx.reply("⚠️ Pehle se track ho raha hai!");
@@ -135,51 +147,68 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
     const itemIndex = activeUsers[chatId].findIndex(item => item.url === targetUrl);
     if (itemIndex === -1) return;
 
-    const randomAgent = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-
     try {
         const response = await axios.get(targetUrl, { 
             headers: { 
-                'User-Agent': randomAgent, 
-                'Accept-Language': 'en-US,en;q=0.9',
+                ...REAL_HEADERS,
                 'Cookie': `_lat=${lat}; _lng=${lng}; locationAddress=Sonu_Sagar_Dairy;`
             }, 
             timeout: 10000 
         });
         
         const $ = cheerio.load(response.data);
-        const pageText = $('body').text();
-        const pageTextLower = pageText.toLowerCase();
+        const htmlContent = response.data;
         
-        // --- 🔎 EXACT PRICE SCRAPER ENGINE ---
+        // --- 🧪 DEEP METADATA SCRAPER (100% ACCURATE) ---
+        // Yeh website ke text ko chhod kar piche chhupi official JSON script se stock padhega
+        let isOutOfStock = false;
         let productPrice = "N/A";
-        const priceSelectors = ['span[class*="price"]', 'div[class*="Price"]', 'span[style*="currency"]', 'div[class*="styles_price"]', 'div[class*="itemPrice"]'];
         
-        for (let selector of priceSelectors) {
-            let priceTxt = $(selector).first().text().trim();
-            if (priceTxt) {
-                priceTxt = priceTxt.replace(/[^₹0-9.]/g, '').trim();
-                if (priceTxt && /\d/.test(priceTxt)) {
-                    productPrice = priceTxt.includes('₹') ? priceTxt : `₹${priceTxt}`;
-                    break;
+        // Target high fidelity json script tags
+        const scriptJson = $('script[type="application/ld+json"]').html();
+        if (scriptJson) {
+            try {
+                const parsedJson = JSON.parse(scriptJson);
+                // Check schema availability status
+                if (parsedJson.offers && parsedJson.offers.availability) {
+                    const availability = parsedJson.offers.availability.toLowerCase();
+                    if (availability.includes('outofstock') || availability.includes('discontinued')) {
+                        isOutOfStock = true;
+                    }
+                    if (parsedJson.offers.price) {
+                        productPrice = `₹${parsedJson.offers.price}`;
+                    }
                 }
+            } catch (jsErr) {
+                // Failover inside script parser
             }
         }
 
-        // --- 🎯 HYPER-SENSITIVE INSTAMART STOCK TRACKER ---
-        // 1. Pehle strictly check karo ki "Out of Stock" ya "Unavailable" ka tag to nahi hai
-        const isSoldOut = pageTextLower.includes('out of stock') || 
-                          pageTextLower.includes('currently unavailable') || 
-                          pageTextLower.includes('item unavailable') || 
-                          pageTextLower.includes('not deliverable') ||
-                          $('div[class*="outOfStock"]').length > 0 ||
-                          $('div[class*="soldOut"]').length > 0;
+        // --- 🎯 BACKUP FAILSAFE CORRECTION ENGINE ---
+        // Agar main script kisi vajah se miss hui toh hi ye chalega
+        const pageTextLower = $('body').text().toLowerCase();
         
-        // 2. Agar sold out nahi hai, aur page par Swiggy ka native "ADD" ya "add" text button maujood hai
-        const hasAddButtonText = pageText.includes('ADD') || pageText.includes('Add') || pageTextLower.includes('add to cart');
+        const textIndicatesSoldOut = pageTextLower.includes('out of stock') || 
+                                     pageTextLower.includes('currently unavailable') || 
+                                     pageTextLower.includes('item unavailable') || 
+                                     pageTextLower.includes('sold out') ||
+                                     pageTextLower.includes('not deliverable');
 
-        // FIRE TRIGGER ONLY IF NOT SOLD OUT AND HAS INSTAMART'S NATIVE 'ADD' BUTTON
-        if (!isSoldOut && hasAddButtonText) {
+        // Check explicit out of stock selectors
+        const hasSoldOutClasses = $('div[class*="outOfStock"]').length > 0 || 
+                                  $('div[class*="soldOut"]').length > 0 || 
+                                  $('div[class*="Unavailable"]').length > 0;
+
+        if (textIndicatesSoldOut || hasSoldOutClasses) {
+            isOutOfStock = true;
+        }
+
+        // Exact Main ADD Element validation
+        const hasAddText = htmlContent.includes('"ADD"') || htmlContent.includes('>ADD<') || htmlContent.includes('>Add<');
+
+        // 🔥 STRICT GATEKEEPER TRIGGER CONTROL
+        // Agar item explicitly out of stock nahi hai, aur page par real data block hai tabhi alert dega
+        if (!isOutOfStock && hasAddText && !pageTextLower.includes('please login')) {
             await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale area pr item wapas aa gaya hai! 🔥\n\n💰 **Price:** ${productPrice}\n\nLink:\n${targetUrl}`,
                 Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
             ).catch(() => {});
@@ -189,4 +218,4 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
     }
 }
 
-bot.launch().then(() => console.log("Instamart Native ADD Engine Connected..."));
+bot.launch().then(() => console.log("Instamart Bulletproof Anti-Fake Alert Engine Connected..."));
