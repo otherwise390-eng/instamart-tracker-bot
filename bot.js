@@ -21,12 +21,13 @@ global.instamartApprovedList = global.instamartApprovedList || [ADMIN_CHAT_ID.to
 
 const USER_AGENTS = [
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/605.1.15',
-    'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+    'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 ];
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.status(200).send('Instamart Clean Price Engine Live!'));
+app.get('/', (req, res) => res.status(200).send('Instamart ADD Engine Fixed Live!'));
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Instamart Port Binding Successful on ${PORT}`));
 
 // 🔥 NON-STOP JHATKA SYSTEM
@@ -147,16 +148,16 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
         });
         
         const $ = cheerio.load(response.data);
-        const pageText = $('body').text().toLowerCase();
+        const pageText = $('body').text();
+        const pageTextLower = pageText.toLowerCase();
         
-        // --- 🔎 CLEAN PRICE SCRAPER ENGINE (Removes junk like /a) ---
+        // --- 🔎 EXACT PRICE SCRAPER ENGINE ---
         let productPrice = "N/A";
         const priceSelectors = ['span[class*="price"]', 'div[class*="Price"]', 'span[style*="currency"]', 'div[class*="styles_price"]', 'div[class*="itemPrice"]'];
         
         for (let selector of priceSelectors) {
             let priceTxt = $(selector).first().text().trim();
             if (priceTxt) {
-                // Remove unwanted text/slashes, keep only Currency sign and digits
                 priceTxt = priceTxt.replace(/[^₹0-9.]/g, '').trim();
                 if (priceTxt && /\d/.test(priceTxt)) {
                     productPrice = priceTxt.includes('₹') ? priceTxt : `₹${priceTxt}`;
@@ -165,27 +166,20 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
             }
         }
 
-        // --- 🎯 REAL-TIME ACCURACY STOCK TESTER ---
-        const hasOutOfStockTag = $('div[class*="outOfStock"]').length || $('div[class*="Unavailable"]').length || $('div[class*="soldOut"]').length;
-        const outOfStockText = pageText.includes('out of stock') || pageText.includes('currently unavailable') || pageText.includes('item unavailable') || pageText.includes('not deliverable');
+        // --- 🎯 HYPER-SENSITIVE INSTAMART STOCK TRACKER ---
+        // 1. Pehle strictly check karo ki "Out of Stock" ya "Unavailable" ka tag to nahi hai
+        const isSoldOut = pageTextLower.includes('out of stock') || 
+                          pageTextLower.includes('currently unavailable') || 
+                          pageTextLower.includes('item unavailable') || 
+                          pageTextLower.includes('not deliverable') ||
+                          $('div[class*="outOfStock"]').length > 0 ||
+                          $('div[class*="soldOut"]').length > 0;
         
-        // Target specifically main dynamic buttons to avoid footer block alerts
-        const mainAddButton = $('div[class*="item_container"]').find('div[class*="add_button"]').length || 
-                             $('button[class*="add-to-cart"]').length || 
-                             $('div[class*="AddButton"]').length || 
-                             pageText.includes('add button');
+        // 2. Agar sold out nahi hai, aur page par Swiggy ka native "ADD" ya "add" text button maujood hai
+        const hasAddButtonText = pageText.includes('ADD') || pageText.includes('Add') || pageTextLower.includes('add to cart');
 
-        let isActuallySoldOut = false;
-        let isActuallyAvailable = false;
-
-        if (hasOutOfStockTag || outOfStockText) {
-            isActuallySoldOut = true;
-        } else if (mainAddButton || pageText.includes('add to cart')) {
-            isActuallyAvailable = true;
-        }
-
-        // STRICT GATEKEEPER: Instock selection filter
-        if (!isActuallySoldOut && isActuallyAvailable) {
+        // FIRE TRIGGER ONLY IF NOT SOLD OUT AND HAS INSTAMART'S NATIVE 'ADD' BUTTON
+        if (!isSoldOut && hasAddButtonText) {
             await bot.telegram.sendMessage(chatId, `🚨 INSTAMART STOCK ALERT 🚨\n\n🔥 bhai *Sonu Sagar Dairy* wale area pr item wapas aa gaya hai! 🔥\n\n💰 **Price:** ${productPrice}\n\nLink:\n${targetUrl}`,
                 Markup.inlineKeyboard([[Markup.button.callback('Stop Tracking 🛑', `stop_url_${itemIndex}`)]])
             ).catch(() => {});
@@ -195,4 +189,4 @@ async function checkInstamartStock(ctx, chatId, targetUrl, lat, lng) {
     }
 }
 
-bot.launch().then(() => console.log("Instamart Accurate Price Engine Connected..."));
+bot.launch().then(() => console.log("Instamart Native ADD Engine Connected..."));
